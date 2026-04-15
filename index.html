@@ -1,0 +1,1859 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Facture - フランス請求書作成ツール</title>
+<style>
+/* ===== リセット & 基本 ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f1a;
+  --bg2: #141425;
+  --bg3: #1a1a35;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e8eaf0;
+  --text2: #8892a8;
+  --accent: #6c9fff;
+  --accent2: #93b8ff;
+  --accent-glow: rgba(108, 159, 255, 0.15);
+  --danger: #ff6b6b;
+  --danger-bg: rgba(255, 107, 107, 0.1);
+  --success: #5fd68c;
+  --success-bg: rgba(95, 214, 140, 0.1);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+body {
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ===== スクロールバー ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ===== レイアウト ===== */
+.app-header {
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-header h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.main-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  min-height: calc(100vh - 56px);
+}
+
+@media (max-width: 1200px) {
+  .main-container { grid-template-columns: 1fr; }
+  .preview-panel { max-height: none; }
+  .input-panel { max-height: none; }
+}
+
+@media (max-width: 768px) {
+  .app-header { padding: 12px 16px; }
+  .app-header h1 { font-size: 1rem; }
+  .header-actions { width: 100%; justify-content: flex-end; }
+  .input-panel { padding: 16px; }
+  .section { padding: 16px; }
+  .preview-panel { padding: 12px; }
+  .invoice-preview { width: 100%; min-height: auto; padding: 8mm 6mm; font-size: 8pt; }
+  .inv-parties { flex-direction: column; gap: 10pt; }
+  .inv-totals-table { width: 80%; }
+  .inv-header { flex-direction: column; gap: 8pt; }
+  .inv-number { text-align: left; }
+}
+
+/* ===== 入力パネル ===== */
+.input-panel {
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(100vh - 56px);
+}
+
+.section {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  transition: border-color 0.2s;
+}
+
+.section:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.form-row.full { grid-template-columns: 1fr; }
+.form-row.triple { grid-template-columns: 1fr 1fr 1fr; }
+.form-row.quad { grid-template-columns: 2fr 1fr 1fr 1fr; }
+
+@media (max-width: 600px) {
+  .form-row, .form-row.triple, .form-row.quad { grid-template-columns: 1fr; }
+}
+
+.form-group { display: flex; flex-direction: column; }
+
+.form-group label {
+  font-size: 0.75rem;
+  color: var(--text2);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 0.88rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.form-group textarea { resize: vertical; min-height: 60px; }
+
+/* ===== 項目テーブル ===== */
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.items-table th {
+  font-size: 0.72rem;
+  color: var(--text2);
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.items-table td {
+  padding: 4px 4px;
+  vertical-align: middle;
+}
+
+.items-table input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+  width: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.items-table input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.items-table .col-desc { width: 40%; }
+.items-table .col-qty { width: 12%; }
+.items-table .col-price { width: 18%; }
+.items-table .col-total { width: 18%; }
+.items-table .col-action { width: 12%; text-align: center; }
+
+.line-total {
+  font-weight: 600;
+  color: var(--accent2);
+  padding: 6px 8px;
+  font-size: 0.85rem;
+}
+
+/* ===== ボタン ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+  font-weight: 600;
+}
+.btn-primary:hover { background: var(--accent2); box-shadow: 0 0 16px var(--accent-glow); }
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+.btn-danger:hover { background: var(--danger-bg); border-color: var(--danger); }
+
+.btn-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid rgba(108, 159, 255, 0.3);
+}
+.btn-outline:hover { background: var(--accent-glow); border-color: var(--accent); }
+
+.btn-success {
+  background: var(--success);
+  color: #000;
+  font-weight: 600;
+}
+.btn-success:hover { background: #6ee49a; box-shadow: 0 0 16px rgba(95, 214, 140, 0.2); }
+
+.btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text2);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  padding: 5px 12px;
+}
+.btn-ghost:hover { color: var(--text); border-color: var(--glass-border); background: var(--surface-hover); }
+
+/* ===== 合計セクション ===== */
+.totals-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 24px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.totals-grid .label { color: var(--text2); font-size: 0.9rem; text-align: right; }
+.totals-grid .value { font-weight: 600; font-size: 0.95rem; text-align: right; min-width: 120px; }
+.totals-grid .grand-label { color: var(--accent); font-size: 1.05rem; font-weight: 700; }
+.totals-grid .grand-value { color: var(--accent); font-size: 1.1rem; font-weight: 700; }
+
+/* ===== 過去の請求書リスト ===== */
+.history-list { list-style: none; }
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  background: var(--glass);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.15s, border-color 0.15s;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.history-item:hover { background: var(--surface-hover); border-color: rgba(255,255,255,0.15); }
+.history-info { flex: 1; min-width: 120px; }
+.history-num { font-weight: 600; color: var(--accent2); }
+.history-client { color: var(--text2); font-size: 0.85rem; margin-left: 10px; }
+.history-amount { font-weight: 600; margin: 0 16px; white-space: nowrap; }
+.history-date { color: var(--text2); font-size: 0.8rem; margin-right: 12px; }
+.history-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ===== プレビューパネル ===== */
+.preview-panel {
+  background: #2a2a3a;
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(100vh - 56px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.invoice-preview {
+  background: #fff;
+  color: #1a1a1a;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 20mm 20mm 25mm 20mm;
+  box-shadow: 0 4px 30px rgba(0,0,0,0.3);
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.5;
+  position: relative;
+  border-radius: 2px;
+}
+
+.inv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20pt;
+}
+
+.inv-title {
+  font-size: 22pt;
+  font-weight: 700;
+  color: #2c3e50;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.inv-number {
+  text-align: right;
+  font-size: 9pt;
+  color: #555;
+}
+
+.inv-number strong {
+  display: block;
+  font-size: 11pt;
+  color: #2c3e50;
+}
+
+.inv-parties {
+  display: flex;
+  justify-content: space-between;
+  gap: 15mm;
+  margin-bottom: 18pt;
+}
+
+.inv-party { flex: 1; }
+
+.inv-party-label {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #888;
+  margin-bottom: 6pt;
+  font-weight: 600;
+}
+
+.inv-party-name {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 4pt;
+}
+
+.inv-party-detail {
+  font-size: 9pt;
+  color: #555;
+  line-height: 1.6;
+}
+
+.inv-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14pt 0;
+}
+
+.inv-table thead th {
+  background: #2c3e50;
+  color: #fff;
+  padding: 7pt 10pt;
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.inv-table thead th:nth-child(2),
+.inv-table thead th:nth-child(3),
+.inv-table thead th:nth-child(4) {
+  text-align: right;
+}
+
+.inv-table tbody td {
+  padding: 7pt 10pt;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 9.5pt;
+}
+
+.inv-table tbody td:nth-child(2),
+.inv-table tbody td:nth-child(3),
+.inv-table tbody td:nth-child(4) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.inv-table tbody tr:last-child td { border-bottom: 2px solid #2c3e50; }
+
+.inv-totals {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12pt;
+}
+
+.inv-totals-table {
+  width: 55%;
+}
+
+.inv-totals-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5pt 10pt;
+  font-size: 9.5pt;
+}
+
+.inv-totals-row.grand {
+  background: #2c3e50;
+  color: #fff;
+  font-weight: 700;
+  font-size: 11pt;
+  border-radius: 4px;
+  margin-top: 4pt;
+}
+
+.inv-footer {
+  margin-top: 30pt;
+  font-size: 7.5pt;
+  color: #888;
+  border-top: 1px solid #ddd;
+  padding-top: 10pt;
+  line-height: 1.7;
+}
+
+.inv-footer strong { color: #555; }
+
+.inv-mentions {
+  margin-top: 18pt;
+  font-size: 8.5pt;
+  color: #666;
+  line-height: 1.6;
+}
+
+.inv-mentions p { margin-bottom: 4pt; }
+
+/* ===== 印刷スタイル ===== */
+@media print {
+  body { background: #fff; }
+  .app-header, .input-panel { display: none !important; }
+  .main-container { display: block; }
+  .preview-panel {
+    background: #fff;
+    padding: 0;
+    max-height: none;
+    overflow: visible;
+  }
+  .invoice-preview {
+    box-shadow: none;
+    padding: 15mm 20mm 20mm 20mm;
+    width: 100%;
+    min-height: auto;
+  }
+  .mobile-preview-toggle { display: none !important; }
+  @page {
+    size: A4;
+    margin: 0;
+  }
+}
+
+/* ===== タブ ===== */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--border);
+}
+
+.tab-btn {
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  font-size: 0.88rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover { color: var(--text); }
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ===== TVA選択 ===== */
+.tva-selector {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.tva-selector select {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+/* ===== 空状態 ===== */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text2);
+}
+
+.empty-state p { font-size: 0.9rem; }
+
+/* ===== 顧客リスト管理 ===== */
+.client-selector {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.client-selector select {
+  flex: 1;
+  min-width: 180px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.client-selector select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+.client-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.client-save-msg {
+  font-size: 0.8rem;
+  color: var(--success);
+  margin-left: 4px;
+}
+
+/* ===== スマホ用タブ切替（プレビュー/編集） ===== */
+.mobile-preview-toggle {
+  display: none;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 200;
+  padding: 12px 22px;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 30px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(108, 159, 255, 0.35);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.mobile-preview-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(108, 159, 255, 0.45);
+}
+
+@media (max-width: 1200px) {
+  .mobile-preview-toggle { display: block; }
+  .main-container.show-preview .input-panel { display: none; }
+  .main-container.show-preview .preview-panel { display: flex; }
+  .main-container:not(.show-preview) .preview-panel { display: none; }
+  .main-container:not(.show-preview) .input-panel { display: block; }
+}
+
+/* ===== ステータスバッジ ===== */
+.status-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.status-paid { background: var(--success-bg); color: var(--success); }
+.status-unpaid { background: var(--danger-bg); color: var(--danger); }
+.status-draft { background: rgba(255,255,255,0.08); color: var(--text2); }
+
+/* ===== 言語ボタン ===== */
+.lang-btn {
+  font-size: 0.8rem !important;
+  padding: 5px 10px !important;
+}
+.lang-btn.active {
+  background: var(--accent-glow) !important;
+  border-color: var(--accent) !important;
+}
+
+/* ===== データ管理バー ===== */
+.data-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+/* ===== トースト ===== */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  font-weight: 500;
+  font-size: 0.88rem;
+  z-index: 9999;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  transition: opacity 0.3s;
+}
+
+/* ===== Micro-entrepreneur セクション ===== */
+.micro-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--text2);
+}
+
+.micro-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+/* ===== Escompte テキスト ===== */
+.escompte-note {
+  font-size: 0.78rem;
+  color: var(--text2);
+  margin-top: 6px;
+  font-style: italic;
+}
+</style>
+</head>
+<body>
+
+<!-- ===== ヘッダー ===== -->
+<header class="app-header">
+  <h1 id="appTitle">FACTURE</h1>
+  <div class="header-actions">
+    <div class="lang-toggle" style="display:flex;gap:4px;margin-right:8px">
+      <button class="btn btn-outline lang-btn active" data-lang="fr" onclick="setInvoiceLang('fr')">FR</button>
+      <button class="btn btn-outline lang-btn" data-lang="jp" onclick="setInvoiceLang('jp')">JP</button>
+    </div>
+    <button class="btn btn-outline" onclick="resetForm()">新規作成</button>
+    <button class="btn btn-ghost" onclick="duplicateInvoice()">複製</button>
+    <button class="btn btn-success" onclick="saveInvoice()">保存</button>
+    <button class="btn btn-primary" onclick="printInvoice()">PDF / 印刷</button>
+  </div>
+</header>
+
+<!-- ===== メイン ===== -->
+<div class="main-container">
+
+  <!-- 入力パネル -->
+  <div class="input-panel">
+
+    <!-- タブ -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('edit')">編集</button>
+      <button class="tab-btn" onclick="switchTab('history')">履歴</button>
+      <button class="tab-btn" onclick="switchTab('settings')">設定</button>
+    </div>
+
+    <!-- 編集タブ -->
+    <div id="tab-edit" class="tab-content active">
+
+      <!-- 請求書情報 -->
+      <div class="section">
+        <div class="section-title">請求書情報</div>
+        <div class="form-row triple">
+          <div class="form-group">
+            <label>請求書番号 (N° Facture)</label>
+            <input type="text" id="invoiceNumber" readonly>
+          </div>
+          <div class="form-group">
+            <label>発行日 (Date d'émission)</label>
+            <input type="date" id="invoiceDate">
+          </div>
+          <div class="form-group">
+            <label>支払期限 (Date d'échéance)</label>
+            <input type="date" id="dueDate">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>ステータス (Statut)</label>
+            <select id="invoiceStatus">
+              <option value="draft">下書き (Brouillon)</option>
+              <option value="sent">送付済み (Envoyée)</option>
+              <option value="paid">支払済み (Payée)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>通貨 (Devise)</label>
+            <select id="currency" onchange="recalculate(); updatePreview();">
+              <option value="EUR">EUR (€)</option>
+              <option value="JPY">JPY (¥)</option>
+              <option value="USD">USD ($)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 発行者情報 -->
+      <div class="section">
+        <div class="section-title">発行者情報 (Émetteur)</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>名前 / 会社名</label>
+            <input type="text" id="emitterName" placeholder="Nom ou raison sociale">
+          </div>
+          <div class="form-group">
+            <label>SIRET番号</label>
+            <input type="text" id="emitterSiret" placeholder="XXX XXX XXX XXXXX">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>住所 (Adresse)</label>
+            <textarea id="emitterAddress" rows="2" placeholder="Adresse complète"></textarea>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>TVA番号 (N° TVA intracommunautaire)</label>
+            <input type="text" id="emitterTva" placeholder="FRXX XXXXXXXXX">
+          </div>
+          <div class="form-group">
+            <label>メール / 電話</label>
+            <input type="text" id="emitterContact" placeholder="email@example.com / +33...">
+          </div>
+        </div>
+        <div class="micro-toggle">
+          <input type="checkbox" id="microEntrepreneur" onchange="recalculate(); updatePreview();">
+          <label for="microEntrepreneur">Micro-entrepreneur (TVA非課税 - Art. 293 B CGI)</label>
+        </div>
+        <div style="margin-top: 10px;">
+          <button class="btn btn-outline btn-sm" onclick="saveEmitter()">発行者情報を記憶</button>
+          <span id="emitterSaveMsg" style="font-size:0.8rem; color:var(--success); margin-left:8px;"></span>
+        </div>
+      </div>
+
+      <!-- 顧客情報 -->
+      <div class="section">
+        <div class="section-title">顧客情報 (Client)</div>
+        <div class="client-selector">
+          <select id="clientDropdown" onchange="loadClient(this.value)">
+            <option value="">-- 保存済み顧客を選択 --</option>
+          </select>
+          <div class="client-actions">
+            <button class="btn btn-outline btn-sm" onclick="saveCurrentClient()">顧客を保存</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSelectedClient()">削除</button>
+          </div>
+          <span class="client-save-msg" id="clientSaveMsg"></span>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>会社名 / 名前</label>
+            <input type="text" id="clientName" placeholder="Nom du client">
+          </div>
+          <div class="form-group">
+            <label>SIRET番号 (任意)</label>
+            <input type="text" id="clientSiret" placeholder="XXX XXX XXX XXXXX">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>住所 (Adresse)</label>
+            <textarea id="clientAddress" rows="2" placeholder="Adresse du client"></textarea>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>TVA番号 (任意)</label>
+            <input type="text" id="clientTva" placeholder="N° TVA">
+          </div>
+        </div>
+      </div>
+
+      <!-- 項目リスト -->
+      <div class="section">
+        <div class="section-title">項目明細 (Prestations / Produits)</div>
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th class="col-desc">説明 (Description)</th>
+              <th class="col-qty">数量 (Qté)</th>
+              <th class="col-price">単価 (P.U. HT)</th>
+              <th class="col-total">合計 HT</th>
+              <th class="col-action"></th>
+            </tr>
+          </thead>
+          <tbody id="itemsBody"></tbody>
+        </table>
+        <div style="margin-top: 10px;">
+          <button class="btn btn-outline btn-sm" onclick="addItem()">+ 項目追加</button>
+        </div>
+
+        <!-- TVA & 合計 -->
+        <div class="totals-grid" id="totalsDisplay">
+          <div class="label">小計 HT (Sous-total HT)</div>
+          <div class="value" id="dispSubtotal">0,00 &euro;</div>
+
+          <div class="label" id="tvaLabelRow">
+            TVA
+            <select id="tvaRate" onchange="recalculate(); updatePreview();" style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:2px 6px;color:var(--text);font-size:0.85rem;margin-left:4px;">
+              <option value="20">20%</option>
+              <option value="10">10%</option>
+              <option value="5.5">5,5%</option>
+              <option value="2.1">2,1%</option>
+              <option value="0">0% (Exonéré)</option>
+            </select>
+          </div>
+          <div class="value" id="dispTva">0,00 &euro;</div>
+
+          <div class="label" id="discountLabelRow" style="display:none;">
+            Remise
+            <input type="number" id="discountPercent" value="0" min="0" max="100" step="1" onchange="recalculate(); updatePreview();" style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:2px 6px;color:var(--text);font-size:0.85rem;margin-left:4px;width:60px;">
+            %
+          </div>
+          <div class="value" id="dispDiscount" style="display:none;">0,00 &euro;</div>
+
+          <div class="label grand-label">総合計 TTC (Total TTC)</div>
+          <div class="value grand-value" id="dispTotal">0,00 &euro;</div>
+        </div>
+
+        <div class="micro-toggle" style="margin-top:10px;">
+          <input type="checkbox" id="enableDiscount" onchange="toggleDiscount()">
+          <label for="enableDiscount">値引き (Remise) を適用する</label>
+        </div>
+      </div>
+
+      <!-- 支払い条件 -->
+      <div class="section">
+        <div class="section-title">支払い条件 (Conditions de paiement)</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>支払い方法</label>
+            <select id="paymentMethod">
+              <option value="Virement bancaire">銀行振込 (Virement bancaire)</option>
+              <option value="Chèque">小切手 (Chèque)</option>
+              <option value="Carte bancaire">カード決済 (Carte bancaire)</option>
+              <option value="PayPal">PayPal</option>
+              <option value="Espèces">現金 (Espèces)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>遅延利率 (Pénalités de retard)</label>
+            <input type="text" id="latePenalty" value="3 fois le taux d'intérêt légal" placeholder="Ex: 3 fois le taux d'intérêt légal">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>銀行情報 / IBAN (任意)</label>
+            <textarea id="bankInfo" rows="2" placeholder="IBAN: FR76 XXXX XXXX XXXX XXXX XXXX XXX&#10;BIC: XXXXXXXX"></textarea>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>備考 (Mentions complémentaires)</label>
+            <textarea id="extraNotes" rows="2" placeholder="Remarques supplémentaires..."></textarea>
+          </div>
+        </div>
+        <div class="escompte-note">
+          Pas d'escompte pour paiement anticipé. Indemnité forfaitaire pour frais de recouvrement : 40,00 €.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 履歴タブ -->
+    <div id="tab-history" class="tab-content">
+      <div class="section">
+        <div class="section-title">保存済み請求書</div>
+        <div style="margin-bottom:12px; display:flex; gap:8px; flex-wrap:wrap;">
+          <input type="text" id="historySearch" placeholder="検索 (番号・顧客名)..." oninput="renderHistory()" style="flex:1;min-width:150px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--text);font-size:0.88rem;">
+          <select id="historyFilter" onchange="renderHistory()" style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--text);font-size:0.88rem;">
+            <option value="all">すべて</option>
+            <option value="draft">下書き</option>
+            <option value="sent">送付済み</option>
+            <option value="paid">支払済み</option>
+          </select>
+        </div>
+        <ul class="history-list" id="historyList"></ul>
+        <div id="historyEmpty" class="empty-state" style="display:none;">
+          <p>保存された請求書はありません。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 設定タブ -->
+    <div id="tab-settings" class="tab-content">
+      <div class="section">
+        <div class="section-title">データ管理</div>
+        <p style="font-size:0.85rem;color:var(--text2);margin-bottom:14px;">請求書データはブラウザのlocalStorageに保存されています。バックアップを取ることを推奨します。</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-outline" onclick="exportData()">データをエクスポート (JSON)</button>
+          <button class="btn btn-outline" onclick="document.getElementById('importFile').click()">データをインポート</button>
+          <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importData(event)">
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">番号カウンター</div>
+        <p style="font-size:0.85rem;color:var(--text2);margin-bottom:10px;">現在の年の次の請求書番号: <strong style="color:var(--accent);" id="nextNumberDisplay"></strong></p>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label style="font-size:0.85rem;color:var(--text2);">カウンターを手動設定:</label>
+          <input type="number" id="counterOverride" min="0" style="width:80px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:0.88rem;">
+          <button class="btn btn-outline btn-sm" onclick="overrideCounter()">適用</button>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">リセット</div>
+        <p style="font-size:0.85rem;color:var(--text2);margin-bottom:10px;">全データを削除します。この操作は取り消せません。</p>
+        <button class="btn btn-danger" onclick="clearAllData()">全データを削除</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- プレビューパネル -->
+  <div class="preview-panel">
+    <div class="invoice-preview" id="invoicePreview">
+      <!-- プレビュー内容はJSで動的に生成 -->
+    </div>
+  </div>
+
+</div>
+
+<!-- スマホ用プレビュー切替ボタン -->
+<button class="mobile-preview-toggle" id="mobilePreviewBtn" onclick="toggleMobilePreview()">プレビュー表示</button>
+
+<script>
+// ===== 定数・状態 =====
+const LS_EMITTER = 'facture_emitter';
+const LS_INVOICES = 'facture_invoices';
+const LS_COUNTER = 'facture_counter';
+const LS_CLIENTS = 'facture_clients';
+
+let items = [];
+let currentEditId = null;
+let invoiceLang = localStorage.getItem('facture_lang') || 'fr';
+
+// ===== 初期化 =====
+document.addEventListener('DOMContentLoaded', () => {
+  loadEmitter();
+  renderClientDropdown();
+  initNewInvoice();
+  renderHistory();
+  setInvoiceLang(invoiceLang, true);
+  updateNextNumberDisplay();
+
+  // リアルタイムプレビュー
+  document.querySelectorAll('#tab-edit input, #tab-edit textarea, #tab-edit select').forEach(el => {
+    el.addEventListener('input', () => { recalculate(); updatePreview(); });
+    el.addEventListener('change', () => { recalculate(); updatePreview(); });
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      saveInvoice();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+      e.preventDefault();
+      printInvoice();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+      e.preventDefault();
+      resetForm();
+    }
+  });
+});
+
+// ===== 言語切替（FR / JP） =====
+function setInvoiceLang(lang, skipSave) {
+  invoiceLang = lang;
+  if (!skipSave) localStorage.setItem('facture_lang', lang);
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+  document.getElementById('appTitle').textContent = lang === 'jp' ? '請求書 - INVOICE' : 'FACTURE';
+  document.documentElement.lang = lang === 'jp' ? 'ja' : 'fr';
+  updatePreview();
+}
+
+// ===== 請求書番号 =====
+function getNextNumber() {
+  const year = new Date().getFullYear();
+  let counters = JSON.parse(localStorage.getItem(LS_COUNTER) || '{}');
+  if (!counters[year]) counters[year] = 0;
+  counters[year]++;
+  localStorage.setItem(LS_COUNTER, JSON.stringify(counters));
+  return `F-${year}-${String(counters[year]).padStart(3, '0')}`;
+}
+
+function peekNextNumber() {
+  const year = new Date().getFullYear();
+  let counters = JSON.parse(localStorage.getItem(LS_COUNTER) || '{}');
+  const next = (counters[year] || 0) + 1;
+  return `F-${year}-${String(next).padStart(3, '0')}`;
+}
+
+function updateNextNumberDisplay() {
+  const el = document.getElementById('nextNumberDisplay');
+  if (el) el.textContent = peekNextNumber();
+}
+
+// ===== 新規請求書初期化 =====
+function initNewInvoice() {
+  currentEditId = null;
+  document.getElementById('invoiceNumber').value = peekNextNumber();
+  const today = new Date();
+  document.getElementById('invoiceDate').value = formatDateInput(today);
+  const due = new Date(today);
+  due.setDate(due.getDate() + 30);
+  document.getElementById('dueDate').value = formatDateInput(due);
+
+  document.getElementById('clientName').value = '';
+  document.getElementById('clientSiret').value = '';
+  document.getElementById('clientAddress').value = '';
+  document.getElementById('clientTva').value = '';
+  document.getElementById('extraNotes').value = '';
+  document.getElementById('bankInfo').value = '';
+  document.getElementById('tvaRate').value = '20';
+  document.getElementById('invoiceStatus').value = 'draft';
+  document.getElementById('currency').value = 'EUR';
+  document.getElementById('discountPercent').value = '0';
+  document.getElementById('enableDiscount').checked = false;
+  toggleDiscount();
+
+  // Micro-entrepreneur: keep checkbox from emitter settings
+  const emitterData = JSON.parse(localStorage.getItem(LS_EMITTER) || 'null');
+  if (emitterData && emitterData.microEntrepreneur) {
+    document.getElementById('microEntrepreneur').checked = true;
+  }
+
+  items = [{ desc: '', qty: 1, price: 0 }];
+  renderItems();
+  recalculate();
+  updatePreview();
+}
+
+// ===== 発行者情報保存・読込 =====
+function saveEmitter() {
+  const data = {
+    name: document.getElementById('emitterName').value,
+    siret: document.getElementById('emitterSiret').value,
+    address: document.getElementById('emitterAddress').value,
+    tva: document.getElementById('emitterTva').value,
+    contact: document.getElementById('emitterContact').value,
+    paymentMethod: document.getElementById('paymentMethod').value,
+    latePenalty: document.getElementById('latePenalty').value,
+    bankInfo: document.getElementById('bankInfo').value,
+    microEntrepreneur: document.getElementById('microEntrepreneur').checked,
+  };
+  localStorage.setItem(LS_EMITTER, JSON.stringify(data));
+  const msg = document.getElementById('emitterSaveMsg');
+  msg.textContent = '保存しました';
+  setTimeout(() => msg.textContent = '', 2000);
+}
+
+function loadEmitter() {
+  const data = JSON.parse(localStorage.getItem(LS_EMITTER) || 'null');
+  if (!data) return;
+  document.getElementById('emitterName').value = data.name || '';
+  document.getElementById('emitterSiret').value = data.siret || '';
+  document.getElementById('emitterAddress').value = data.address || '';
+  document.getElementById('emitterTva').value = data.tva || '';
+  document.getElementById('emitterContact').value = data.contact || '';
+  if (data.paymentMethod) document.getElementById('paymentMethod').value = data.paymentMethod;
+  if (data.latePenalty) document.getElementById('latePenalty').value = data.latePenalty;
+  if (data.bankInfo) document.getElementById('bankInfo').value = data.bankInfo;
+  if (data.microEntrepreneur) document.getElementById('microEntrepreneur').checked = true;
+}
+
+// ===== 項目管理 =====
+function addItem() {
+  items.push({ desc: '', qty: 1, price: 0 });
+  renderItems();
+  recalculate();
+  updatePreview();
+  // Focus the new row's description
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('#itemsBody tr:last-child input[type="text"]');
+    if (inputs.length) inputs[0].focus();
+  }, 50);
+}
+
+function removeItem(index) {
+  if (items.length <= 1) return;
+  items.splice(index, 1);
+  renderItems();
+  recalculate();
+  updatePreview();
+}
+
+function updateItem(index, field, value) {
+  if (field === 'qty' || field === 'price') {
+    items[index][field] = parseFloat(value) || 0;
+  } else {
+    items[index][field] = value;
+  }
+  recalculate();
+  updatePreview();
+}
+
+function renderItems() {
+  const tbody = document.getElementById('itemsBody');
+  tbody.innerHTML = '';
+  items.forEach((item, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="col-desc"><input type="text" value="${escapeAttr(item.desc)}" oninput="updateItem(${i},'desc',this.value)" placeholder="Description de la prestation..."></td>
+      <td class="col-qty"><input type="number" value="${item.qty}" min="0" step="0.5" oninput="updateItem(${i},'qty',this.value)"></td>
+      <td class="col-price"><input type="number" value="${item.price}" min="0" step="0.01" oninput="updateItem(${i},'price',this.value)"></td>
+      <td class="col-total"><span class="line-total">${formatCurrency(item.qty * item.price)}</span></td>
+      <td class="col-action"><button class="btn btn-danger btn-sm" onclick="removeItem(${i})" ${items.length <= 1 ? 'disabled' : ''}>x</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ===== 値引きトグル =====
+function toggleDiscount() {
+  const enabled = document.getElementById('enableDiscount').checked;
+  document.getElementById('discountLabelRow').style.display = enabled ? '' : 'none';
+  document.getElementById('dispDiscount').style.display = enabled ? '' : 'none';
+  if (!enabled) document.getElementById('discountPercent').value = '0';
+  recalculate();
+  updatePreview();
+}
+
+// ===== 計算 =====
+function recalculate() {
+  const isMicro = document.getElementById('microEntrepreneur').checked;
+  const subtotal = items.reduce((sum, it) => sum + (it.qty * it.price), 0);
+
+  // TVA
+  let tvaRate = parseFloat(document.getElementById('tvaRate').value) || 0;
+  if (isMicro) tvaRate = 0;
+  const tva = subtotal * tvaRate / 100;
+
+  // Discount
+  const discountPercent = parseFloat(document.getElementById('discountPercent').value) || 0;
+  const discountAmount = (subtotal + tva) * discountPercent / 100;
+  const total = subtotal + tva - discountAmount;
+
+  // Update TVA selector visibility
+  const tvaLabelRow = document.getElementById('tvaLabelRow');
+  const dispTva = document.getElementById('dispTva');
+  if (isMicro) {
+    tvaLabelRow.style.opacity = '0.4';
+    document.getElementById('tvaRate').disabled = true;
+  } else {
+    tvaLabelRow.style.opacity = '1';
+    document.getElementById('tvaRate').disabled = false;
+  }
+
+  document.getElementById('dispSubtotal').textContent = formatCurrency(subtotal);
+  document.getElementById('dispTva').textContent = formatCurrency(tva);
+  document.getElementById('dispDiscount').textContent = '-' + formatCurrency(discountAmount);
+  document.getElementById('dispTotal').textContent = formatCurrency(total);
+
+  // 行合計の更新
+  document.querySelectorAll('.line-total').forEach((el, i) => {
+    if (items[i]) {
+      el.textContent = formatCurrency(items[i].qty * items[i].price);
+    }
+  });
+}
+
+// ===== プレビュー更新 =====
+function updatePreview() {
+  const isMicro = document.getElementById('microEntrepreneur').checked;
+  const subtotal = items.reduce((sum, it) => sum + (it.qty * it.price), 0);
+  let tvaRate = parseFloat(document.getElementById('tvaRate').value) || 0;
+  if (isMicro) tvaRate = 0;
+  const tva = subtotal * tvaRate / 100;
+  const discountPercent = parseFloat(document.getElementById('discountPercent').value) || 0;
+  const discountAmount = (subtotal + tva) * discountPercent / 100;
+  const total = subtotal + tva - discountAmount;
+
+  const emitterName = document.getElementById('emitterName').value || '---';
+  const emitterAddress = document.getElementById('emitterAddress').value || '';
+  const emitterSiret = document.getElementById('emitterSiret').value || '';
+  const emitterTva = document.getElementById('emitterTva').value || '';
+  const emitterContact = document.getElementById('emitterContact').value || '';
+
+  const clientName = document.getElementById('clientName').value || '---';
+  const clientAddress = document.getElementById('clientAddress').value || '';
+  const clientSiret = document.getElementById('clientSiret').value || '';
+  const clientTva = document.getElementById('clientTva').value || '';
+
+  const invoiceNumber = document.getElementById('invoiceNumber').value;
+  const invoiceDate = document.getElementById('invoiceDate').value;
+  const dueDate = document.getElementById('dueDate').value;
+  const paymentMethod = document.getElementById('paymentMethod').value;
+  const latePenalty = document.getElementById('latePenalty').value;
+  const bankInfo = document.getElementById('bankInfo').value;
+  const extraNotes = document.getElementById('extraNotes').value;
+
+  const itemsHtml = items.map(it => `
+    <tr>
+      <td>${escapeHtml(it.desc) || '<em style="color:#aaa;">-</em>'}</td>
+      <td>${formatNumber(it.qty)}</td>
+      <td>${formatCurrency(it.price)}</td>
+      <td>${formatCurrency(it.qty * it.price)}</td>
+    </tr>
+  `).join('');
+
+  const isJp = invoiceLang === 'jp';
+  const L = isJp ? {
+    title:'請求書', date:'発行日', due:'支払期限',
+    emitter:'請求元', client:'請求先',
+    siret:'登録番号', tva:'インボイス番号',
+    desc:'品目・内容', qty:'数量', price:'単価', total:'金額',
+    subtotal:'小計', tax:'消費税', grand:'合計', discount:'値引き',
+    payment:'お支払い方法', bank:'お振込先', penalty:'支払遅延', notes:'備考',
+    taxExempt:'消費税：課税事業者ではありません',
+    thanks:'下記の通りご請求申し上げます。ご確認のほどよろしくお願いいたします。',
+    seal:'印', escompte:'', recovery:''
+  } : {
+    title:'Facture', date:'Date', due:'Échéance',
+    emitter:'Émetteur', client:'Client',
+    siret:'SIRET', tva:'N° TVA',
+    desc:'Description', qty:'Quantité', price:'Prix unitaire HT', total:'Total HT',
+    subtotal:'Sous-total HT', tax:'TVA', grand:'Total TTC', discount:'Remise',
+    payment:'Conditions de paiement', bank:'Coordonnées bancaires', penalty:'Pénalités de retard', notes:'',
+    taxExempt:'TVA non applicable, article 293 B du CGI',
+    escompte:'Pas d\'escompte pour paiement anticipé.',
+    recovery:'Indemnité forfaitaire pour frais de recouvrement : 40,00 €'
+  };
+
+  const taxLabel = isJp
+    ? (tvaRate === 0 ? '消費税（不課税）' : `消費税（${formatNumber(tvaRate)}%）`)
+    : (tvaRate === 0 ? 'TVA (Exonéré)' : `TVA (${formatNumber(tvaRate)}%)`);
+
+  const discountHtml = discountPercent > 0 ? `
+    <div class="inv-totals-row">
+      <span>${L.discount} (${formatNumber(discountPercent)}%)</span>
+      <span>-${formatCurrency(discountAmount)}</span>
+    </div>
+  ` : '';
+
+  const preview = document.getElementById('invoicePreview');
+  preview.innerHTML = `
+    <div class="inv-header">
+      <div class="inv-title">${L.title}</div>
+      <div class="inv-number">
+        <strong>${escapeHtml(invoiceNumber)}</strong>
+        ${L.date} : ${formatDateDisplay(invoiceDate)}<br>
+        ${L.due} : ${formatDateDisplay(dueDate)}
+      </div>
+    </div>
+
+    ${isJp ? `<p style="margin:14px 0;font-size:0.9rem;color:#555">${L.thanks}</p>` : ''}
+
+    <div class="inv-parties">
+      <div class="inv-party">
+        <div class="inv-party-label">${L.emitter}</div>
+        <div class="inv-party-name">${escapeHtml(emitterName)}</div>
+        <div class="inv-party-detail">
+          ${escapeHtml(emitterAddress).replace(/\n/g, '<br>')}
+          ${emitterSiret ? '<br>' + L.siret + ' : ' + escapeHtml(emitterSiret) : ''}
+          ${!isMicro && emitterTva ? '<br>' + L.tva + ' : ' + escapeHtml(emitterTva) : ''}
+          ${emitterContact ? '<br>' + escapeHtml(emitterContact) : ''}
+        </div>
+      </div>
+      <div class="inv-party" style="position:relative">
+        <div class="inv-party-label">${L.client}</div>
+        <div class="inv-party-name">${escapeHtml(clientName)}${isJp ? ' 御中' : ''}</div>
+        <div class="inv-party-detail">
+          ${escapeHtml(clientAddress).replace(/\n/g, '<br>')}
+          ${clientSiret ? '<br>' + L.siret + ' : ' + escapeHtml(clientSiret) : ''}
+          ${clientTva ? '<br>' + L.tva + ' : ' + escapeHtml(clientTva) : ''}
+        </div>
+        ${isJp ? `<div style="position:absolute;top:-4px;right:8px;width:62px;height:62px;border:2.5px solid #c33;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#c33;font-size:0.7rem;font-weight:700;letter-spacing:2px;writing-mode:vertical-rl;opacity:0.85;background:rgba(255,255,255,0.8)">${escapeHtml(emitterName.slice(0,2) || L.seal)}</div>` : ''}
+      </div>
+    </div>
+
+    <table class="inv-table">
+      <thead>
+        <tr>
+          <th>${L.desc}</th>
+          <th>${L.qty}</th>
+          <th>${L.price}</th>
+          <th>${L.total}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsHtml}
+      </tbody>
+    </table>
+
+    <div class="inv-totals">
+      <div class="inv-totals-table">
+        <div class="inv-totals-row">
+          <span>${L.subtotal}</span>
+          <span>${formatCurrency(subtotal)}</span>
+        </div>
+        ${!isMicro ? `<div class="inv-totals-row">
+          <span>${taxLabel}</span>
+          <span>${formatCurrency(tva)}</span>
+        </div>` : ''}
+        ${discountHtml}
+        <div class="inv-totals-row grand">
+          <span>${isMicro && !isJp ? 'Total' : L.grand}</span>
+          <span>${formatCurrency(total)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="inv-mentions">
+      <p><strong>${L.payment} :</strong> ${escapeHtml(paymentMethod)}${dueDate ? ' - ' + L.due + ' : ' + formatDateDisplay(dueDate) : ''}</p>
+      ${bankInfo ? '<p><strong>' + L.bank + ' :</strong><br>' + escapeHtml(bankInfo).replace(/\n/g, '<br>') + '</p>' : ''}
+      ${isMicro ? '<p><strong>' + L.taxExempt + '</strong></p>' : ''}
+      ${!isJp ? `<p><strong>${L.penalty} :</strong> ${escapeHtml(latePenalty)}</p>
+      <p>${L.escompte}</p>
+      <p>${L.recovery}</p>` : ''}
+      ${extraNotes ? '<p>' + escapeHtml(extraNotes).replace(/\n/g, '<br>') + '</p>' : ''}
+    </div>
+
+    <div class="inv-footer">
+      <strong>${escapeHtml(emitterName)}</strong>
+      ${emitterSiret ? ' - SIRET : ' + escapeHtml(emitterSiret) : ''}
+      ${!isMicro && emitterTva ? ' - TVA : ' + escapeHtml(emitterTva) : ''}
+      ${emitterContact ? '<br>' + escapeHtml(emitterContact) : ''}
+      ${emitterAddress ? '<br>' + escapeHtml(emitterAddress).replace(/\n/g, ', ') : ''}
+    </div>
+  `;
+}
+
+// ===== 保存 =====
+function saveInvoice() {
+  const invoices = JSON.parse(localStorage.getItem(LS_INVOICES) || '[]');
+
+  let invoiceNumber;
+  if (currentEditId) {
+    invoiceNumber = document.getElementById('invoiceNumber').value;
+  } else {
+    invoiceNumber = getNextNumber();
+    document.getElementById('invoiceNumber').value = invoiceNumber;
+  }
+
+  const isMicro = document.getElementById('microEntrepreneur').checked;
+  let tvaRate = parseFloat(document.getElementById('tvaRate').value) || 0;
+  if (isMicro) tvaRate = 0;
+  const subtotal = items.reduce((s, it) => s + it.qty * it.price, 0);
+  const tva = subtotal * tvaRate / 100;
+  const discountPercent = parseFloat(document.getElementById('discountPercent').value) || 0;
+  const discountAmount = (subtotal + tva) * discountPercent / 100;
+
+  const data = {
+    id: currentEditId || Date.now().toString(),
+    number: invoiceNumber,
+    date: document.getElementById('invoiceDate').value,
+    dueDate: document.getElementById('dueDate').value,
+    status: document.getElementById('invoiceStatus').value,
+    currency: document.getElementById('currency').value,
+    clientName: document.getElementById('clientName').value,
+    clientSiret: document.getElementById('clientSiret').value,
+    clientAddress: document.getElementById('clientAddress').value,
+    clientTva: document.getElementById('clientTva').value,
+    items: JSON.parse(JSON.stringify(items)),
+    tvaRate: tvaRate,
+    microEntrepreneur: isMicro,
+    discountPercent: discountPercent,
+    paymentMethod: document.getElementById('paymentMethod').value,
+    latePenalty: document.getElementById('latePenalty').value,
+    bankInfo: document.getElementById('bankInfo').value,
+    extraNotes: document.getElementById('extraNotes').value,
+    total: subtotal + tva - discountAmount,
+  };
+
+  if (currentEditId) {
+    const idx = invoices.findIndex(inv => inv.id === currentEditId);
+    if (idx >= 0) invoices[idx] = data;
+    else invoices.push(data);
+  } else {
+    invoices.push(data);
+  }
+
+  localStorage.setItem(LS_INVOICES, JSON.stringify(invoices));
+  currentEditId = data.id;
+  renderHistory();
+  updatePreview();
+  updateNextNumberDisplay();
+  showToast('請求書を保存しました');
+}
+
+// ===== 読み込み =====
+function loadInvoice(id) {
+  const invoices = JSON.parse(localStorage.getItem(LS_INVOICES) || '[]');
+  const inv = invoices.find(i => i.id === id);
+  if (!inv) return;
+
+  currentEditId = inv.id;
+  document.getElementById('invoiceNumber').value = inv.number;
+  document.getElementById('invoiceDate').value = inv.date;
+  document.getElementById('dueDate').value = inv.dueDate;
+  document.getElementById('invoiceStatus').value = inv.status || 'draft';
+  document.getElementById('currency').value = inv.currency || 'EUR';
+  document.getElementById('clientName').value = inv.clientName || '';
+  document.getElementById('clientSiret').value = inv.clientSiret || '';
+  document.getElementById('clientAddress').value = inv.clientAddress || '';
+  document.getElementById('clientTva').value = inv.clientTva || '';
+  document.getElementById('tvaRate').value = inv.tvaRate !== undefined ? inv.tvaRate : 20;
+  document.getElementById('microEntrepreneur').checked = inv.microEntrepreneur || false;
+  document.getElementById('discountPercent').value = inv.discountPercent || 0;
+  document.getElementById('enableDiscount').checked = (inv.discountPercent || 0) > 0;
+  toggleDiscount();
+  document.getElementById('paymentMethod').value = inv.paymentMethod || 'Virement bancaire';
+  document.getElementById('latePenalty').value = inv.latePenalty || '';
+  document.getElementById('bankInfo').value = inv.bankInfo || '';
+  document.getElementById('extraNotes').value = inv.extraNotes || '';
+
+  items = inv.items && inv.items.length ? JSON.parse(JSON.stringify(inv.items)) : [{ desc: '', qty: 1, price: 0 }];
+  renderItems();
+  recalculate();
+  updatePreview();
+  switchTab('edit');
+}
+
+function deleteInvoice(id) {
+  if (!confirm('この請求書を削除しますか？')) return;
+  let invoices = JSON.parse(localStorage.getItem(LS_INVOICES) || '[]');
+  invoices = invoices.filter(i => i.id !== id);
+  localStorage.setItem(LS_INVOICES, JSON.stringify(invoices));
+  if (currentEditId === id) {
+    initNewInvoice();
+  }
+  renderHistory();
+  showToast('削除しました');
+}
+
+// ===== 複製 =====
+function duplicateInvoice() {
+  if (!currentEditId) {
+    showToast('複製する請求書を先に保存してください');
+    return;
+  }
+  currentEditId = null;
+  document.getElementById('invoiceNumber').value = peekNextNumber();
+  document.getElementById('invoiceStatus').value = 'draft';
+  const today = new Date();
+  document.getElementById('invoiceDate').value = formatDateInput(today);
+  const due = new Date(today);
+  due.setDate(due.getDate() + 30);
+  document.getElementById('dueDate').value = formatDateInput(due);
+  recalculate();
+  updatePreview();
+  showToast('請求書を複製しました（未保存）');
+}
+
+// ===== 履歴表示 =====
+function renderHistory() {
+  const invoices = JSON.parse(localStorage.getItem(LS_INVOICES) || '[]');
+  const list = document.getElementById('historyList');
+  const empty = document.getElementById('historyEmpty');
+  const searchTerm = (document.getElementById('historySearch')?.value || '').toLowerCase();
+  const filterStatus = document.getElementById('historyFilter')?.value || 'all';
+
+  let filtered = invoices.filter(inv => {
+    const matchSearch = !searchTerm ||
+      (inv.number || '').toLowerCase().includes(searchTerm) ||
+      (inv.clientName || '').toLowerCase().includes(searchTerm);
+    const matchStatus = filterStatus === 'all' || (inv.status || 'draft') === filterStatus;
+    return matchSearch && matchStatus;
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+  const sorted = [...filtered].reverse();
+
+  const statusLabels = {
+    draft: { label: '下書き', class: 'status-draft' },
+    sent: { label: '送付済', class: 'status-unpaid' },
+    paid: { label: '支払済', class: 'status-paid' },
+  };
+
+  list.innerHTML = sorted.map(inv => {
+    const s = statusLabels[inv.status || 'draft'] || statusLabels.draft;
+    return `
+    <li class="history-item">
+      <div class="history-info">
+        <span class="history-num">${escapeHtml(inv.number)}</span>
+        <span class="status-badge ${s.class}">${s.label}</span>
+        <span class="history-client">${escapeHtml(inv.clientName || '---')}</span>
+      </div>
+      <span class="history-date">${formatDateDisplay(inv.date)}</span>
+      <span class="history-amount">${formatCurrencyWithCode(inv.total || 0, inv.currency || 'EUR')}</span>
+      <div class="history-actions">
+        <button class="btn btn-outline btn-sm" onclick="loadInvoice('${inv.id}')">開く</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteInvoice('${inv.id}')">削除</button>
+      </div>
+    </li>
+  `;}).join('');
+}
+
+// ===== タブ切り替え =====
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  const targetBtn = document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`);
+  if (targetBtn) targetBtn.classList.add('active');
+  if (tab === 'settings') updateNextNumberDisplay();
+}
+
+// ===== リセット =====
+function resetForm() {
+  if (currentEditId && !confirm('保存していない変更は失われます。新規作成しますか？')) return;
+  initNewInvoice();
+  switchTab('edit');
+  showToast('新しい請求書を作成しました');
+}
+
+// ===== 印刷 =====
+function printInvoice() {
+  updatePreview();
+  window.print();
+}
+
+// ===== トースト通知 =====
+function showToast(msg) {
+  // Remove existing toasts
+  document.querySelectorAll('.toast').forEach(t => t.remove());
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2500);
+}
+
+// ===== ユーティリティ =====
+function getCurrencyCode() {
+  return document.getElementById('currency')?.value || 'EUR';
+}
+
+function formatCurrency(n) {
+  const currency = getCurrencyCode();
+  if (invoiceLang === 'jp' && currency === 'JPY') {
+    return '\u00a5' + new Intl.NumberFormat('ja-JP').format(Math.round(n));
+  }
+  const locales = { EUR: 'fr-FR', JPY: 'ja-JP', USD: 'en-US', GBP: 'en-GB' };
+  return new Intl.NumberFormat(locales[currency] || 'fr-FR', { style: 'currency', currency: currency }).format(n);
+}
+
+function formatCurrencyWithCode(n, currency) {
+  if (!currency) currency = 'EUR';
+  const locales = { EUR: 'fr-FR', JPY: 'ja-JP', USD: 'en-US', GBP: 'en-GB' };
+  return new Intl.NumberFormat(locales[currency] || 'fr-FR', { style: 'currency', currency: currency }).format(n);
+}
+
+function formatNumber(n) {
+  if (invoiceLang === 'jp') return new Intl.NumberFormat('ja-JP').format(n);
+  return new Intl.NumberFormat('fr-FR').format(n);
+}
+
+function formatDateDisplay(dateStr) {
+  if (!dateStr) return '---';
+  const d = new Date(dateStr + 'T00:00:00');
+  if (invoiceLang === 'jp') {
+    return d.getFullYear() + '\u5e74' + (d.getMonth() + 1) + '\u6708' + d.getDate() + '\u65e5';
+  }
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatDateInput(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ===== 顧客リスト管理 =====
+function getClients() {
+  return JSON.parse(localStorage.getItem(LS_CLIENTS) || '[]');
+}
+
+function renderClientDropdown() {
+  const clients = getClients();
+  const dd = document.getElementById('clientDropdown');
+  const currentVal = dd.value;
+  dd.innerHTML = '<option value="">-- 保存済み顧客を選択 --</option>';
+  clients.forEach((c, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = c.name || '(名前なし)';
+    dd.appendChild(opt);
+  });
+  if (currentVal && currentVal < clients.length) dd.value = currentVal;
+}
+
+function saveCurrentClient() {
+  const name = document.getElementById('clientName').value.trim();
+  if (!name) {
+    showToast('顧客名を入力してください');
+    return;
+  }
+  const clients = getClients();
+  const data = {
+    name: name,
+    siret: document.getElementById('clientSiret').value,
+    address: document.getElementById('clientAddress').value,
+    tva: document.getElementById('clientTva').value,
+  };
+  const existing = clients.findIndex(c => c.name === name);
+  if (existing >= 0) {
+    clients[existing] = data;
+  } else {
+    clients.push(data);
+  }
+  localStorage.setItem(LS_CLIENTS, JSON.stringify(clients));
+  renderClientDropdown();
+  const idx = clients.findIndex(c => c.name === name);
+  document.getElementById('clientDropdown').value = idx;
+  const msg = document.getElementById('clientSaveMsg');
+  msg.textContent = '顧客を保存しました';
+  setTimeout(() => msg.textContent = '', 2000);
+}
+
+function loadClient(index) {
+  if (index === '' || index === null) return;
+  const clients = getClients();
+  const c = clients[parseInt(index)];
+  if (!c) return;
+  document.getElementById('clientName').value = c.name || '';
+  document.getElementById('clientSiret').value = c.siret || '';
+  document.getElementById('clientAddress').value = c.address || '';
+  document.getElementById('clientTva').value = c.tva || '';
+  recalculate();
+  updatePreview();
+}
+
+function deleteSelectedClient() {
+  const dd = document.getElementById('clientDropdown');
+  const idx = dd.value;
+  if (idx === '' || idx === null) {
+    showToast('削除する顧客を選択してください');
+    return;
+  }
+  const clients = getClients();
+  const name = clients[parseInt(idx)]?.name || '';
+  if (!confirm(`「${name}」を顧客リストから削除しますか？`)) return;
+  clients.splice(parseInt(idx), 1);
+  localStorage.setItem(LS_CLIENTS, JSON.stringify(clients));
+  renderClientDropdown();
+  showToast('顧客を削除しました');
+}
+
+// ===== スマホ用プレビュー切替 =====
+let mobileShowPreview = false;
+function toggleMobilePreview() {
+  mobileShowPreview = !mobileShowPreview;
+  const container = document.querySelector('.main-container');
+  const btn = document.getElementById('mobilePreviewBtn');
+  if (mobileShowPreview) {
+    container.classList.add('show-preview');
+    btn.textContent = '編集に戻る';
+  } else {
+    container.classList.remove('show-preview');
+    btn.textContent = 'プレビュー表示';
+  }
+}
+
+// ===== データのエクスポート/インポート =====
+function exportData() {
+  const data = {
+    version: 2,
+    exportDate: new Date().toISOString(),
+    emitter: JSON.parse(localStorage.getItem(LS_EMITTER) || 'null'),
+    invoices: JSON.parse(localStorage.getItem(LS_INVOICES) || '[]'),
+    clients: JSON.parse(localStorage.getItem(LS_CLIENTS) || '[]'),
+    counter: JSON.parse(localStorage.getItem(LS_COUNTER) || '{}'),
+    lang: localStorage.getItem('facture_lang') || 'fr',
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `facture-backup-${formatDateInput(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('データをエクスポートしました');
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!confirm('現在のデータを上書きしますか？（エクスポートでバックアップを推奨）')) return;
+      if (data.emitter) localStorage.setItem(LS_EMITTER, JSON.stringify(data.emitter));
+      if (data.invoices) localStorage.setItem(LS_INVOICES, JSON.stringify(data.invoices));
+      if (data.clients) localStorage.setItem(LS_CLIENTS, JSON.stringify(data.clients));
+      if (data.counter) localStorage.setItem(LS_COUNTER, JSON.stringify(data.counter));
+      if (data.lang) localStorage.setItem('facture_lang', data.lang);
+      // Reload
+      loadEmitter();
+      renderClientDropdown();
+      initNewInvoice();
+      renderHistory();
+      setInvoiceLang(data.lang || 'fr', true);
+      updateNextNumberDisplay();
+      showToast('データをインポートしました');
+    } catch (err) {
+      showToast('インポートに失敗しました: 無効なファイル');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ===== カウンター手動設定 =====
+function overrideCounter() {
+  const val = parseInt(document.getElementById('counterOverride').value);
+  if (isNaN(val) || val < 0) {
+    showToast('有効な数値を入力してください');
+    return;
+  }
+  const year = new Date().getFullYear();
+  let counters = JSON.parse(localStorage.getItem(LS_COUNTER) || '{}');
+  counters[year] = val;
+  localStorage.setItem(LS_COUNTER, JSON.stringify(counters));
+  if (!currentEditId) {
+    document.getElementById('invoiceNumber').value = peekNextNumber();
+  }
+  updateNextNumberDisplay();
+  showToast(`カウンターを ${val} に設定しました`);
+}
+
+// ===== 全データ削除 =====
+function clearAllData() {
+  if (!confirm('本当に全データを削除しますか？この操作は取り消せません。')) return;
+  if (!confirm('最終確認：全ての請求書、顧客、発行者情報が消えます。よろしいですか？')) return;
+  localStorage.removeItem(LS_EMITTER);
+  localStorage.removeItem(LS_INVOICES);
+  localStorage.removeItem(LS_CLIENTS);
+  localStorage.removeItem(LS_COUNTER);
+  loadEmitter();
+  renderClientDropdown();
+  initNewInvoice();
+  renderHistory();
+  updateNextNumberDisplay();
+  showToast('全データを削除しました');
+}
+</script>
+</body>
+</html>
